@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Form, Request, UploadFile, File
+import logging
+from fastapi import FastAPI, Form, Request, UploadFile, File, Depends
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,28 +15,54 @@ import uvicorn
 import shutil
 import os
 from dotenv import load_dotenv
+from typing import Dict, List
+
+# Import services
+from services.assemblyai_service import AssemblyAIService
+from services.gemini_service import GeminiService
+from services.murf_service import MurfService
+
+# Import schemas
+from schemas import (
+    Message,
+    ChatRequest,
+    ChatResponse,
+    TranscriptionResponse,
+    TTSRequest,
+    TTSResponse,
+    AudioUploadResponse
+)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
-MURF_API_KEY = os.getenv("MURF_API_KEY")
+# Initialize services
+try:
+    assemblyai_service = AssemblyAIService(os.getenv("ASSEMBLYAI_API_KEY"))
+except ValueError as e:
+    logger.warning(f"AssemblyAI service not available: {str(e)}")
+    assemblyai_service = None
+
+try:
+    gemini_service = GeminiService(os.getenv("GEMINI_API_KEY"))
+except ValueError as e:
+    logger.warning(f"Gemini service not available: {str(e)}")
+    gemini_service = None
+
+try:
+    murf_service = MurfService(os.getenv("MURF_API_KEY"))
+except ValueError as e:
+    logger.warning(f"Murf service not available: {str(e)}")
+    murf_service = None
+
 FALLBACK_MESSAGE = "I'm having trouble connecting right now. Please try again in a moment."
-# AssemblyAI Configuration
-if ASSEMBLYAI_API_KEY:
-    aai.settings.api_key = ASSEMBLYAI_API_KEY
-    transcriber = aai.Transcriber()
-else:
-    transcriber = None
-
-# Gemini Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    print("Warning: GEMINI_API_KEY not found in .env file.")
-
-# In-memory chat history store (session_id -> list of messages)
-chat_history_store = {}
+chat_history_store: Dict[str, List[Dict[str, str]]] = {}
 # it is saved if its is visible
 # for model in genai.list_models():
 #     print(f"Available model: {model.name}")
@@ -50,204 +77,130 @@ templates = Jinja2Templates(directory="templates")
 
 chat_history_store = {}
 
-async def transcribe_with_assemblyai(audio_path: str) -> str:
-    """Helper function to transcribe audio using AssemblyAI"""
-    if not ASSEMBLYAI_API_KEY:
-        raise RuntimeError("AssemblyAI API key not configured")
-    
-    transcriber = aai.Transcriber()
-    transcript = transcriber.transcribe(audio_path)
-    
-    if transcript.status != 'completed':
-        raise RuntimeError(f"Transcription failed: {transcript.error}")
-    
-    return transcript.text
 
-async def call_gemini(messages: List[Dict[str, str]]) -> str:
-    """Helper function to call Gemini API with chat history"""
-    if not GEMINI_API_KEY:
-        raise RuntimeError("Gemini API key not configured")
-    
-    try:
-        # Use the Python client
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        chat = model.start_chat(history=[])
-        
-        # Convert messages to Gemini format
-        for msg in messages[:-1]:  # Exclude the last message
-            if msg["role"] == "user":
-                chat.send_message(msg["content"])
-            elif msg["role"] == "assistant":
-                # Gemini handles history internally
-                pass
-        
-        # Send the last message
-        response = chat.send_message(messages[-1]["content"])
-        return response.text
-        
-    except Exception as e:
-        raise RuntimeError(f"Failed to call Gemini API: {str(e)}")
 
-async def generate_murf_tts_and_save(text: str) -> str:
-    """Helper function to generate TTS audio with Murf"""
-    if not MURF_API_KEY:
-        raise RuntimeError("MURF API key not configured")
-    
-    url = "https://api.murf.ai/v1/speech/generate"
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "api-key": MURF_API_KEY
-    }
-    
-    payload = {
-        "text": text,
-        "voiceId": "en-US-natalie",
-        "format": "MP3",
-        "sampleRate": 24000,
-        "channelType": "STEREO"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code != 200:
-        raise RuntimeError(f"TTS generation failed: {response.text}")
-    
-    response_data = response.json()
-    audio_url = response_data.get("audioFile") or response_data.get("audio_url")
-    
-    if not audio_url:
-        raise RuntimeError("No audio URL in TTS response")
-    
-    return audio_url
-
-@app.post("/transcribe/file")
+@app.post("/transcribe/file", response_model=TranscriptionResponse)
 async def transcribe_audio(file: UploadFile = File(...)):
-    try:
-        if not ASSEMBLYAI_API_KEY:
-            return JSONResponse(
-                status_code=500, 
-                content={"error": "AssemblyAI API key not configured. Please set ASSEMBLYAI_API_KEY in .env file."}
-            )
+    """
+    Transcribe audio files using AssemblyAI.
+    
+    Args:
+        file: Uploaded audio file
         
-        if not transcriber:
-            return JSONResponse(
-                status_code=500, 
-                content={"error": "Transcriber not initialized. Please check your AssemblyAI API key."}
-            )
-        
-        # Read the uploaded file
-        audio_bytes = await file.read()
-        
-        if len(audio_bytes) == 0:
-            return JSONResponse(
-                status_code=400, 
-                content={"error": "Empty audio file provided."}
-            )
-        
-        # Write bytes to a temporary file and transcribe using AssemblyAI
-        print(f"Transcribing audio file of size: {len(audio_bytes)} bytes")
-        print(f"File content type: {file.content_type}")
-        print(f"File name: {file.filename}")
-
-        # Pick a suitable suffix based on filename or content type
-        temp_suffix = ".webm"
-        if file and file.filename and "." in file.filename:
-            temp_suffix = os.path.splitext(file.filename)[1]
-        elif file and file.content_type:
-            if "mp3" in file.content_type:
-                temp_suffix = ".mp3"
-            elif "wav" in file.content_type:
-                temp_suffix = ".wav"
-            elif "ogg" in file.content_type:
-                temp_suffix = ".ogg"
-
-        with tempfile.NamedTemporaryFile(suffix=temp_suffix, delete=False) as tmp:
-            tmp.write(audio_bytes)
-            tmp_path = tmp.name
-
-        try:
-            transcript = transcriber.transcribe(tmp_path)
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-        
-        print(f"Transcription result: {transcript}")
-        print(f"Transcription status: {transcript.status if transcript else 'None'}")
-        print(f"Transcription text: '{transcript.text if transcript else 'None'}'")
-        print(f"Transcription error: {transcript.error if transcript else 'None'}")
-        print(f"Transcription confidence: {transcript.confidence if hasattr(transcript, 'confidence') else 'N/A'}")
-        
-        if transcript and transcript.status == 'completed' and transcript.text:
-            return {"transcript": transcript.text}
-        elif transcript and transcript.status == 'error':
-            return JSONResponse(
-                status_code=500, 
-                content={"error": f"AssemblyAI transcription error: {transcript.error}"}
-            )
-        else:
-            return JSONResponse(
-                status_code=500, 
-                content={"error": f"Transcription not completed. Status: {transcript.status if transcript else 'None'}, Text: {transcript.text if transcript else 'None'}"}
-            )
-            
-    except Exception as e:
-        print(f"Transcription error: {str(e)}")
+    Returns:
+        TranscriptionResponse with transcript text
+    """
+    if not assemblyai_service:
+        logger.error("AssemblyAI service not available")
         return JSONResponse(
-            status_code=500, 
+            status_code=500,
+            content={"error": "Speech-to-text service not available. Please check configuration."}
+        )
+
+    try:
+        logger.info(f"Received audio file for transcription: {file.filename}")
+        transcript = await assemblyai_service.transcribe_uploaded_file(file)
+        logger.info("Successfully transcribed audio file")
+        return TranscriptionResponse(transcript=transcript)
+    except ValueError as e:
+        logger.warning(f"Invalid audio file: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"Transcription failed: {str(e)}")
+        return JSONResponse(
+            status_code=500,
             content={"error": f"Transcription failed: {str(e)}"}
         )
 
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
-@app.post("/tts")
-async def tts(text: str = Form(...), voiceId: str = Form("en-US-natalie")):
-    # Check if API key is set
-    if not MURF_API_KEY:
-        return JSONResponse(status_code=500, content={"error": "API key not configured. Please set MURF_API_KEY in .env file."})
-
-    # Correct Murf API endpoint
-    url = "https://api.murf.ai/v1/speech/generate"
+@app.post("/tts", response_model=TTSResponse)
+async def text_to_speech(request: TTSRequest):
+    """
+    Convert text to speech using Murf AI.
     
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "api-key": MURF_API_KEY
-    }
-
-    # Use the voiceId provided by the frontend
-    payload = {
-        "text": text,
-        "voiceId": voiceId,
-        "format": "MP3",
-        "sampleRate": 24000,
-        "channelType": "STEREO"
-    }
+    Args:
+        request: TTSRequest containing text and voice_id
+        
+    Returns:
+        TTSResponse with audio_url
+    """
+    if not murf_service:
+        logger.error("Murf service not available")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Text-to-speech service not available. Please check configuration."}
+        )
 
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            audio_url = response_data.get("audioFile") or response_data.get("audio_url")
+        if not request.text or len(request.text.strip()) == 0:
+            raise ValueError("Text cannot be empty")
             
-            if audio_url:
-                return JSONResponse(content={"audio_url": audio_url})
-            else:
-                return JSONResponse(status_code=500, content={
-                    "error": "No audio URL in the API response.", 
-                    "response": response_data
-                })
-        else:
-            return JSONResponse(status_code=response.status_code, content={
-                "error": "TTS generation failed.", 
-                "details": response.text
-            })
+        logger.info(f"Generating TTS for text: {request.text[:50]}...")
+        audio_url = murf_service.generate_tts(request.text, request.voice_id)
+        logger.info("Successfully generated TTS")
+        return TTSResponse(audio_url=audio_url)
+    except ValueError as e:
+        logger.warning(f"Invalid TTS request: {str(e)}")
+        return JSONResponse(
+            status_code=422,
+            content={"error": str(e)}
+        )
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": "A server error occurred.", "details": str(e)})
+        logger.error(f"TTS generation failed: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"TTS generation failed: {str(e)}"}
+        )
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Handle chat conversations with Gemini AI.
+    
+    Args:
+        request: ChatRequest containing messages and optional session_id
+        
+    Returns:
+        ChatResponse with generated message and session_id
+    """
+    if not gemini_service:
+        logger.error("Gemini service not available")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Chat service not available. Please check configuration."}
+        )
+    
+    # Get or create session
+    session_id = request.session_id or str(len(chat_history_store) + 1)
+    if session_id not in chat_history_store:
+        chat_history_store[session_id] = []
+    
+    try:
+        # Add new messages to history
+        chat_history_store[session_id].extend(request.messages)
+        
+        # Get response from Gemini
+        response_text = gemini_service.generate_response(chat_history_store[session_id])
+        
+        # Add assistant response to history
+        assistant_message = Message(role="assistant", content=response_text)
+        chat_history_store[session_id].append(assistant_message)
+        
+        return ChatResponse(
+            message=response_text,
+            session_id=session_id
+        )
+    except Exception as e:
+        logger.error(f"Chat failed: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Chat failed: {str(e)}"}
+        )
 
 @app.post("/upload-audio")
 async def upload_audio(file: UploadFile = File(...)):
