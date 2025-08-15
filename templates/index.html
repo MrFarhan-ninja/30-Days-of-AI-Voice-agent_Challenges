@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AuraVox Echo Bot</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;400&display=swap" rel="stylesheet">
+  <link rel="icon" href="/static/favicon.ico" />
+</head>
+<body>
+  <!-- Top navigation / branding -->
+  
+    <!--<div class="brand">
+      <img src="/images/AuraVox Echo Bot in .png" alt="AuraVox Echo Bot Logo" class="brand-logo" />
+      <span class="brand-title">AuraVox Echo Bot</span>
+    </div>-->
+    <div class="nav-actions">
+      <button id="themeToggle" class="icon-btn" title="Toggle theme">🌗</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <img src="/images/AuraVox Echo Bot in .png" alt="AuraVox Echo Bot Logo" class="hero-image" />
+    <h1>🎤 AuraVox Echo Bot</h1>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-button active" data-target="tts-tab">Text to Speech</button>
+      <button class="tab-button" data-target="echo-tab">Echo Bot</button>
+      <button class="tab-button" data-target="agent-tab">LLM Agent</button>
+    </div>
+
+    <!-- TEXT TO SPEECH SECTION -->
+    <section id="tts-tab" class="tts-section card tab-panel active">
+      <h2>📝 Text to Speech</h2>
+      <form method="post" action="/tts">
+        <input type="text" name="text" id="textInput" placeholder="Type something..." required />
+        <select id="voiceSelector" name="voiceId" class="form-select mb-3" aria-label="Select Voice">
+          <option>Loading voices...</option>
+        </select>
+        <button type="submit" id="generateBtn"><span class="btn-icon">🔊</span> Generate Voice</button>
+      </form>
+      <div id="errorDisplay" style="color: red; margin-top: 10px;"></div>
+      <audio id="audioPlayer" hidden controls style="margin-top: 10px; width: 100%;"></audio>
+      {% if audio_url %}
+        <p>🔊 Generated for: <strong>{{ text }}</strong></p>
+        <audio id="ttsPlayer" controls src="{{ audio_url }}"></audio>
+        <br />
+        <button onclick="document.getElementById('ttsPlayer').play()">▶️ Play</button>
+        <button onclick="document.getElementById('ttsPlayer').pause()">⏹️ Pause</button>
+      {% endif %}
+    </section>
+
+    <div class="divider"><span>✨</span></div>
+
+    <!-- ECHO BOT SECTION -->
+    <section id="echo-tab" class="echo-section card tab-panel">
+      <h2>🎧 Echo Bot</h2>
+      
+      <!-- Echo Bot Version Toggle -->
+      <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+        <label style="font-weight: bold; margin-right: 10px;">🎛️ Echo Bot Mode:</label>
+        <input type="radio" id="echoV1" name="echoMode" value="v1" checked>
+        <label for="echoV1" style="margin-right: 15px;">V1 - Play Original</label>
+        <input type="radio" id="echoV2" name="echoMode" value="v2">
+        <label for="echoV2">V2 - Murf Voice Echo</label>
+      </div>
+      
+      <!-- Voice Selection for Echo Bot v2 -->
+      <div id="echoVoiceSelection" style="display: none; margin-bottom: 15px; padding: 10px; background: #e8f5e8; border-radius: 6px;">
+        <label for="echoVoiceSelector" style="font-weight: bold;">🎤 Echo Voice:</label>
+        <select id="echoVoiceSelector" style="width: 100%; padding: 4px; border-radius: 4px; border: 1px solid #ccc; margin-top: 5px;">
+          <option value="en-US-natalie">Natalie (Female)</option>
+          <option value="en-US-aria">Aria (Female)</option>
+          <option value="en-US-guy">Guy (Male)</option>
+          <option value="en-US-davis">Davis (Male)</option>
+          <option value="en-US-sara">Sara (Female)</option>
+        </select>
+      </div>
+      
+      <div style="margin-bottom: 10px;">
+        <label for="audioDeviceSelect" style="font-weight: bold;">🎤 Select Microphone:</label>
+        <select id="audioDeviceSelect" style="width: 100%; padding: 4px; border-radius: 4px; border: 1px solid #ccc;"></select>
+      </div>
+      <div id="recordingStatus" style="margin-bottom: 10px; padding: 8px; border-radius: 4px; background: #f0f0f0; display: none;">
+        <span id="statusText">Ready to record</span>
+      </div>
+      <button id="startBtn"><span class="btn-icon">🎙️</span> Start Recording</button>
+      <button id="stopBtn" disabled><span class="btn-icon">⏹️</span> Stop Recording</button>
+      <audio id="echoPlayer" controls style="margin-top: 10px; width: 100%;"></audio>
+      <div style="margin-top: 8px;">
+        <button id="playBtn" style="padding:4px 12px; border-radius:4px; background:#28a745; color:white; border:none; margin-right:8px;">▶️ Play</button>
+        <button id="stopBtnCustom" style="padding:4px 12px; border-radius:4px; background:#dc3545; color:white; border:none;">⏹️ Stop</button>
+      </div>
+      <div id="fileNameInputArea" style="display:none; margin-top:10px;">
+        <label for="fileNameInput">File name:</label>
+        <input type="text" id="fileNameInput" placeholder="Enter file name..." style="padding:4px; border-radius:4px; border:1px solid #ccc;" />
+        <button id="uploadBtn" style="padding:4px 10px; border-radius:4px; background:#007bff; color:white; border:none;">Upload</button>
+      </div>
+      <div id="uploadStatus" style="margin-top:10px; color:#007bff;"></div>
+    
+    <!-- Transcription Display -->
+<div id="transcriptionDisplay" style="margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; background: #fafafa;">
+  <h5>📝 Transcription:</h5>
+  <div id="transcriptionText" class="card" style="font-style: italic; color: #333;">Waiting for your recording...</div>
+</div>
+
+<!-- File Upload for Transcription -->
+<div id="fileUploadSection" style="margin-top: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background: #f8f9fa;">
+  <h5>📁 Upload Audio File for Transcription:</h5>
+  <input type="file" id="audioFileInput" accept="audio/*" style="margin: 10px 0; padding: 5px;">
+  <button id="transcribeFileBtn" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Transcribe File</button>
+  <div id="fileTranscriptionStatus" style="margin-top: 10px; font-size: 14px;"></div>
+  
+  <!-- Test Audio Generation -->
+  <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+    <h6>🧪 Test Transcription:</h6>
+    <button id="generateTestAudioBtn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Generate Test Audio</button>
+    <button id="testTranscriptionBtn" style="padding: 8px 16px; background: #ffc107; color: #212529; border: none; border-radius: 4px; cursor: pointer;">Test Transcription</button>
+    <div id="testStatus" style="margin-top: 10px; font-size: 14px;"></div>
+  </div>
+</div>
+
+    </section>
+
+    <div class="divider"><span>✨</span></div>
+
+    <!-- LLM VOICE AGENT SECTION -->
+    <section id="agent-tab" class="llm-section card tab-panel">
+      <h2>🤖 <strong>Conversation AuraVox</strong>  LLM Agent</h2>
+      
+      <!-- Session Management -->
+      <div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 6px; border-left: 4px solid #ffc107;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+          <div>
+            <strong>🆔 Session ID:</strong> 
+            <span id="session-id-display" style="font-family: monospace; font-size: 0.9em; color: #856404;">
+              Loading...
+            </span>
+          </div>
+          <div style="margin-top: 5px;">
+            <button id="clear-chat-btn" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; font-size: 0.8em; cursor: pointer;">
+              🗑️ Clear Chat
+            </button>
+            <button id="new-session-btn" style="padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 3px; font-size: 0.8em; cursor: pointer; margin-left: 5px;">
+              🆕 New Session
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 15px; padding: 10px; background: #f0f8ff; border-radius: 6px;">
+        <label for="llmVoiceSelector" style="font-weight: bold;">🎤 Assistant Voice:</label>
+        <select id="llmVoiceSelector" style="width: 100%; padding: 4px; border-radius: 4px; border: 1px solid #ccc; margin-top: 5px;">
+          <option value="en-US-natalie">Natalie (Female)</option>
+          <option value="en-US-aria">Aria (Female)</option>
+          <option value="en-US-guy">Guy (Male)</option>
+          <option value="en-US-davis">Davis (Male)</option>
+          <option value="en-US-sara">Sara (Female)</option>
+        </select>
+      </div>
+      
+      <div id="llm-recording-status" style="margin-bottom: 10px; padding: 8px; border-radius: 4px; background: #f0f0f0; display: none;">
+        <span id="llm-status-text">Ready to record your question...</span>
+      </div>
+      
+      <!-- Audio Visualization -->
+      <div id="llm-visualization-container" style="margin-bottom: 15px; height: 60px; background: #f0f0f0; border-radius: 4px; overflow: hidden; display: none;">
+        <canvas id="llm-audio-visualizer" width="800" height="60" style="width: 100%; height: 100%;"></canvas>
+      </div>
+      
+      <button id="llm-start-recording-btn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">
+        <span class="btn-icon">🎙️</span> Ask Question
+      </button>
+      <button id="llm-stop-recording-btn" style="padding: 10px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>
+        <span class="btn-icon">⏹️</span> Stop Recording
+      </button>
+      
+      <div id="llm-loading-indicator" style="margin-top: 15px; display: none;">
+        <div class="spinner" style="display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(0,0,0,.1); border-radius: 50%; border-top-color: #007bff; animation: spin 1s ease-in-out infinite;"></div>
+        <span style="margin-left: 10px;">Processing your question...</span>
+      </div>
+      
+      <div id="llm-transcription-container" style="margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; background: #fafafa; display: none;">
+        <h5>📝 Your Question:</h5>
+        <div id="llm-transcription-result" style="font-style: italic; color: #333; padding: 10px;"></div>
+      </div>
+      
+      <div id="llm-chat-history" style="margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; background: #f8f9fa; max-height: 300px; overflow-y: auto;">
+        <h5>📜 Chat History:</h5>
+        <div id="llm-chat-history-content" style="padding: 5px;"></div>
+      </div>
+      
+      <div id="llm-response-container" style="margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; background: #f0f8ff; display: none;">
+        <h5>💬 AI Response:</h5>
+        <div id="llm-response-text" style="color: #333; padding: 10px;"></div>
+      </div>
+      
+      <div id="llm-audio-container" style="margin-top: 15px; display: none;">
+        <audio id="llm-audio-player" controls style="width: 100%;"></audio>
+      </div>
+    </section>
+  </div>
+
+  <style>
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <script src="/static/script.js" defer></script>
+</body>
+</html>
