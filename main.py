@@ -2,6 +2,10 @@ from fastapi import FastAPI, Form, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, WebSocket,WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+import logging
+logger = logging.getLogger("uvicorn")
 import time
 import assemblyai as aai
 import google.generativeai as genai
@@ -120,6 +124,32 @@ async def generate_murf_tts_and_save(text: str) -> str:
         raise RuntimeError("No audio URL in TTS response")
     
     return audio_url
+
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    Establishes a WebSocket connection and echoes back any message it receives.
+    """
+    await websocket.accept()
+    logger.info("WebSocket connection established.")
+    try:
+        while True:
+            # Wait for a message from the client
+            data = await websocket.receive_text()
+            logger.info(f"WebSocket received message: '{data}'")
+            
+            # Echo the received message back to the client
+            await websocket.send_text(f"Echo: {data}")
+            logger.info(f"WebSocket sent echo message back.")
+            
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from WebSocket.")
+    except Exception as e:
+        logger.error(f"An error occurred in the WebSocket connection: {e}")
+    finally:
+        logger.info("Closing WebSocket connection.")
 
 @app.post("/transcribe/file")
 async def transcribe_audio(file: UploadFile = File(...)):
