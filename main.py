@@ -7,6 +7,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import FastAPI, WebSocket,WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+import json
+from typing import Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import logging
 logger = logging.getLogger("uvicorn")
 import time
@@ -153,6 +156,92 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"An error occurred in the WebSocket connection: {e}")
     finally:
         logger.info("Closing WebSocket connection.")
+
+#@app.websocket("/ws/audio")
+#async def websocket_audio_endpoint(websocket: WebSocket):
+
+ #   Receives streaming audio data from the client and saves it to a file.
+    
+#    await websocket.accept()
+ #   uploads_dir = "uploads"
+    #os.makedirs(uploads_dir, exist_ok=True)
+    #filename = f"recording_{int(time.time())}.webm"
+    #file_path = os.path.join(uploads_dir, filename)
+    #with open(file_path, "wb") as audio_file:
+        #try:
+            #while True:
+             #   data = await websocket.receive_bytes()
+              #  audio_file.write(data)
+        #except WebSocketDisconnect:
+            #logger.info(f"WebSocket audio stream disconnected. Audio saved to {file_path}")
+        #except Exception as e:
+            #logger.error(f"Error in audio WebSocket: {e}")
+        #finally:
+            #audio_file.flush()
+            #audio_file.close()
+            #logger.info(f"Audio file closed: {file_path}")
+
+#@app.websocket("/ws/audio")
+#async def websocket_audio_endpoint(websocket: WebSocket):
+ #   """
+  #  Receives streaming audio data from the client and saves it to a file.
+    #"""
+   # await websocket.accept()
+    #uploads_dir = "uploads"
+    #os.makedirs(uploads_dir, exist_ok=True)
+    #filename = f"recording_{int(time.time())}.webm"
+    #file_path = os.path.join(uploads_dir, filename)
+
+   # try:
+       # with open(file_path, "wb") as audio_file:
+           # while True:
+             #   data = await websocket.receive_bytes()
+              #  audio_file.write(data)
+               # logger.info(f"Received {len(data)} bytes")  # debug line
+   # except WebSocketDisconnect:
+        #logger.info(f"🔌 WebSocket disconnected. Audio saved: {file_path}")
+   # except Exception as e:
+        #logger.error(f"⚠️ Error in audio WebSocket: {type(e).__name__}: {e}")
+    #finally:
+        #logger.info(f"✅ Audio file closed: {file_path}")
+
+@app.websocket("/ws/audio")
+async def websocket_audio_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    uploads_dir = "uploads"
+    os.makedirs(uploads_dir, exist_ok=True)
+    filename = f"recording_{int(time.time())}.webm"
+    file_path = os.path.join(uploads_dir, filename)
+
+    try:
+        with open(file_path, "wb") as audio_file:
+            while True:
+                msg = await websocket.receive()
+
+                # If it's binary → audio data
+                if msg["type"] == "websocket.receive" and "bytes" in msg:
+                    audio_file.write(msg["bytes"])
+                    logger.info(f"Received {len(msg['bytes'])} bytes")
+
+                # If it's text → check control messages (start/stop)
+                elif msg["type"] == "websocket.receive" and "text" in msg:
+                    try:
+                        payload = json.loads(msg["text"])
+                        if payload.get("type") == "stop":
+                            logger.info("🛑 Stop signal received from client.")
+                            break
+                    except Exception:
+                        pass
+
+                # If client disconnects
+                elif msg["type"] == "websocket.disconnect":
+                    logger.info("🔌 Client disconnected.")
+                    break
+
+    except Exception as e:
+        logger.error(f"⚠️ Error in audio WebSocket: {e}")
+    finally:
+        logger.info(f"✅ Audio file closed: {file_path}")
 
 @app.post("/transcribe/file")
 async def transcribe_audio(file: UploadFile = File(...)):

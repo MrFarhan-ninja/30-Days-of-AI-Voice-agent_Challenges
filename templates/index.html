@@ -208,6 +208,33 @@
       to { transform: rotate(360deg); }
     }
   </style>
-  <script src="/static/script.js" defer></script>
+
+<!-- Buttons anywhere in your UI -->
+
+
+<!-- Buttons anywhere in your UI -->
+<button onclick="startRecording()">Start Streaming</button>
+<button onclick="stopRecording()">Stop</button>
+
+<!-- Load the client script at the end of body -->
+
+
+
+
+
+<script>
+function startRecording() {
+    console.log("Recording started...");
+}
+
+function stopRecording() {
+    console.log("Recording stopped...");
+}
+</script>
+
+
+<!-- Load the client script at the end of body -->
+<script src="/static/streaming-client.js"></script>
+<script src="/static/script.js" defer></script>
 </body>
 </html>
