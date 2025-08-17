@@ -1,3 +1,6 @@
+
+# Day 16 scaffold: will add WebSocket /ws/audio endpoint here
+
 from fastapi import FastAPI, Form, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -887,3 +890,7 @@ if __name__ == "__main__":
     print("🎧 Echo Bot is ready to record, transcribe, and play back your voice!")
 
     uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
+
+
+
+
