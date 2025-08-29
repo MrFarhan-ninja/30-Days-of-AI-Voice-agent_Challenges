@@ -305,11 +305,8 @@ document.addEventListener('DOMContentLoaded', function() {
           // Stop audio visualization
           stopLLMAudioVisualization();
           
-          // Hide visualization container
-          const visualizationContainer = document.getElementById('llm-visualization-container');
-          if (visualizationContainer) {
-            visualizationContainer.style.display = 'none';
-          }
+          // Reset UI state
+          resetLLMRecordingUI();
           
           if (llmRecordedChunks.length === 0) {
             showLLMStatus("❌ No audio data recorded!", true);
@@ -337,12 +334,34 @@ document.addEventListener('DOMContentLoaded', function() {
         llmMediaRecorder.onerror = (event) => {
           console.error('LLM MediaRecorder error:', event.error);
           showLLMStatus("❌ Recording error: " + event.error, true);
+          
+          // Reset UI state on error
+          resetLLMRecordingUI();
         };
 
         // Start recording
         llmMediaRecorder.start(500);
         llmStartRecordingBtn.disabled = true;
         llmStopRecordingBtn.disabled = false;
+        
+        // Show recording indicator
+        const recordingIndicator = document.getElementById('llm-recording-indicator');
+        if (recordingIndicator) {
+          recordingIndicator.style.display = 'flex';
+        }
+        
+        // Update start button text
+        const startBtnText = document.getElementById('llm-start-btn-text');
+        if (startBtnText) {
+          startBtnText.textContent = 'Recording...';
+        }
+        
+        // Add recording-active class to container
+        const llmSection = document.querySelector('#agent-tab');
+        if (llmSection) {
+          llmSection.classList.add('recording-active');
+        }
+        
         showLLMStatus("🎙️ Recording started! Ask your question...");
         
       } catch (error) {
@@ -357,8 +376,41 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
           showLLMStatus("❌ Failed to access microphone: " + error.message, true);
         }
+        
+        // Reset UI state on error
+        resetLLMRecordingUI();
       }
     });
+
+    // Function to reset LLM recording UI state
+    function resetLLMRecordingUI() {
+      llmStartRecordingBtn.disabled = false;
+      llmStopRecordingBtn.disabled = true;
+      
+      // Hide recording indicator
+      const recordingIndicator = document.getElementById('llm-recording-indicator');
+      if (recordingIndicator) {
+        recordingIndicator.style.display = 'none';
+      }
+      
+      // Reset start button text
+      const startBtnText = document.getElementById('llm-start-btn-text');
+      if (startBtnText) {
+        startBtnText.textContent = 'Ask Question';
+      }
+      
+      // Remove recording-active class
+      const llmSection = document.querySelector('#agent-tab');
+      if (llmSection) {
+        llmSection.classList.remove('recording-active');
+      }
+      
+      // Hide visualization container
+      const visualizationContainer = document.getElementById('llm-visualization-container');
+      if (visualizationContainer) {
+        visualizationContainer.style.display = 'none';
+      }
+    }
 
     // Stop recording button for LLM
     llmStopRecordingBtn.addEventListener("click", () => {
@@ -366,10 +418,10 @@ document.addEventListener('DOMContentLoaded', function() {
       if (llmMediaRecorder && llmMediaRecorder.state !== 'inactive') {
         showLLMStatus("⏹️ Stopping recording...");
         llmMediaRecorder.stop();
-        llmStartRecordingBtn.disabled = false;
-        llmStopRecordingBtn.disabled = true;
+        resetLLMRecordingUI();
       } else {
         showLLMStatus("❌ No active recording to stop!", true);
+        resetLLMRecordingUI();
       }
     });
   }
@@ -1411,3 +1463,330 @@ function showUploadOptions(blob, mimeType) {
     }
   }
 }
+
+// Configuration Modal and API Key Management
+let apiKeys = {
+    gemini: '',
+    murf: '',
+    assemblyai: ''
+};
+
+// Configuration Modal Elements
+const configModal = document.getElementById('configModal');
+const configBtn = document.getElementById('configBtn');
+const closeBtn = document.querySelector('.close');
+const saveConfigBtn = document.getElementById('saveConfigBtn');
+const clearConfigBtn = document.getElementById('clearConfigBtn');
+const testConfigBtn = document.getElementById('testConfigBtn');
+const configStatus = document.getElementById('configStatus');
+
+// API Key inputs
+const geminiApiKeyInput = document.getElementById('geminiApiKey');
+const murfApiKeyInput = document.getElementById('murfApiKey');
+const assemblyaiApiKeyInput = document.getElementById('assemblyaiApiKey');
+
+// Load saved API keys from localStorage
+function loadApiKeys() {
+    const savedKeys = localStorage.getItem('auravox_api_keys');
+    if (savedKeys) {
+        apiKeys = JSON.parse(savedKeys);
+        updateApiKeyInputs();
+    }
+}
+
+// Save API keys to localStorage
+function saveApiKeys() {
+    apiKeys.gemini = geminiApiKeyInput.value.trim();
+    apiKeys.murf = murfApiKeyInput.value.trim();
+    apiKeys.assemblyai = assemblyaiApiKeyInput.value.trim();
+    
+    localStorage.setItem('auravox_api_keys', JSON.stringify(apiKeys));
+    showConfigStatus('API keys saved successfully!', 'success');
+}
+
+// Clear all API keys
+function clearApiKeys() {
+    apiKeys = { gemini: '', murf: '', assemblyai: '' };
+    localStorage.removeItem('auravox_api_keys');
+    updateApiKeyInputs();
+    showConfigStatus('API keys cleared!', 'info');
+}
+
+// Update input fields with saved keys
+function updateApiKeyInputs() {
+    if (geminiApiKeyInput) geminiApiKeyInput.value = apiKeys.gemini;
+    if (murfApiKeyInput) murfApiKeyInput.value = apiKeys.murf;
+    if (assemblyaiApiKeyInput) assemblyaiApiKeyInput.value = apiKeys.assemblyai;
+}
+
+// Show configuration status message
+function showConfigStatus(message, type) {
+    if (!configStatus) return;
+    
+    configStatus.textContent = message;
+    configStatus.style.display = 'block';
+    configStatus.style.backgroundColor = type === 'success' ? '#d4edda' : 
+                                       type === 'error' ? '#f8d7da' : '#d1ecf1';
+    configStatus.style.color = type === 'success' ? '#155724' : 
+                              type === 'error' ? '#721c24' : '#0c5460';
+    configStatus.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : 
+                                      type === 'error' ? '#f5c6cb' : '#bee5eb'}`;
+    
+    setTimeout(() => {
+        configStatus.style.display = 'none';
+    }, 3000);
+}
+
+// Test API keys
+async function testApiKeys() {
+    const keys = {
+        gemini: geminiApiKeyInput.value.trim(),
+        murf: murfApiKeyInput.value.trim(),
+        assemblyai: assemblyaiApiKeyInput.value.trim()
+    };
+    
+    if (!keys.gemini || !keys.murf || !keys.assemblyai) {
+        showConfigStatus('Please fill in all API keys before testing!', 'error');
+        return;
+    }
+    
+    showConfigStatus('Testing API keys...', 'info');
+    
+    try {
+        const response = await fetch('/test-apis', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(keys)
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            showConfigStatus('All API keys are valid! ✅', 'success');
+        } else {
+            showConfigStatus(`Test failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showConfigStatus(`Test error: ${error.message}`, 'error');
+    }
+}
+
+// Modal event listeners
+if (configBtn) {
+    configBtn.onclick = () => {
+        loadApiKeys();
+        if (configModal) configModal.style.display = 'block';
+    };
+}
+
+if (closeBtn) {
+    closeBtn.onclick = () => {
+        if (configModal) configModal.style.display = 'none';
+    };
+}
+
+window.onclick = (event) => {
+    if (configModal && event.target === configModal) {
+        configModal.style.display = 'none';
+    }
+};
+
+if (saveConfigBtn) saveConfigBtn.onclick = saveApiKeys;
+if (clearConfigBtn) clearConfigBtn.onclick = clearApiKeys;
+if (testConfigBtn) testConfigBtn.onclick = testApiKeys;
+
+// Web Search Integration
+async function performWebSearch(query) {
+    try {
+        const response = await fetch('/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query, max_results: 3 })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Search failed');
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Web search error:', error);
+        return { results: [], error: error.message };
+    }
+}
+
+
+
+// Load API keys on page load
+loadApiKeys();
+
+    // Load saved API keys including weather
+    const savedGeminiKey = localStorage.getItem('geminiApiKey');
+    const savedMurfKey = localStorage.getItem('murfApiKey');
+    const savedAssemblyKey = localStorage.getItem('assemblyaiApiKey');
+    const savedOpenWeatherKey = localStorage.getItem('openweatherApiKey');
+    
+    if (savedGeminiKey) document.getElementById('geminiApiKey').value = savedGeminiKey;
+    if (savedMurfKey) document.getElementById('murfApiKey').value = savedMurfKey;
+    if (savedAssemblyKey) document.getElementById('assemblyaiApiKey').value = savedAssemblyKey;
+    if (savedOpenWeatherKey) document.getElementById('openweatherApiKey').value = savedOpenWeatherKey;
+
+    // Save configuration including weather API key
+    document.getElementById('saveConfigBtn').addEventListener('click', function() {
+        const geminiKey = document.getElementById('geminiApiKey').value.trim();
+        const murfKey = document.getElementById('murfApiKey').value.trim();
+        const assemblyKey = document.getElementById('assemblyaiApiKey').value.trim();
+        const openWeatherKey = document.getElementById('openweatherApiKey').value.trim();
+        
+        localStorage.setItem('geminiApiKey', geminiKey);
+        localStorage.setItem('murfApiKey', murfKey);
+        localStorage.setItem('assemblyaiApiKey', assemblyKey);
+        localStorage.setItem('openweatherApiKey', openWeatherKey);
+        
+        document.getElementById('configStatus').textContent = 'Configuration saved successfully!';
+        setTimeout(() => {
+            document.getElementById('configStatus').textContent = '';
+        }, 3000);
+    });
+
+    // Update testApiKey function to include weather
+    window.testApiKey = async function(apiType) {
+        const statusElement = document.getElementById('configStatus');
+        
+        let apiKey = '';
+        let testEndpoint = '';
+        
+        switch(apiType) {
+            case 'gemini':
+                apiKey = document.getElementById('geminiApiKey').value.trim();
+                testEndpoint = '/test-apis';
+                break;
+            case 'murf':
+                apiKey = document.getElementById('murfApiKey').value.trim();
+                testEndpoint = '/test-apis';
+                break;
+            case 'assemblyai':
+                apiKey = document.getElementById('assemblyaiApiKey').value.trim();
+                testEndpoint = '/test-apis';
+                break;
+            case 'openweather':
+                apiKey = document.getElementById('openweatherApiKey').value.trim();
+                testEndpoint = '/test-apis';
+                break;
+            default:
+                statusElement.textContent = 'Invalid API type';
+                return;
+        }
+        
+        if (!apiKey) {
+            statusElement.textContent = `Please enter your ${apiType.toUpperCase()} API key first`;
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('api_type', apiType);
+            formData.append('api_key', apiKey);
+            
+            const response = await fetch(testEndpoint, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                statusElement.textContent = `${apiType.toUpperCase()} API key is valid!`;
+            } else {
+                statusElement.textContent = `${apiType.toUpperCase()} API key is invalid: ${result.error}`;
+            }
+        } catch (error) {
+            statusElement.textContent = `Error testing ${apiType.toUpperCase()} API: ${error.message}`;
+        }
+    };
+
+    // Clear configuration including weather
+    document.getElementById('clearConfigBtn').addEventListener('click', function() {
+        document.getElementById('geminiApiKey').value = '';
+        document.getElementById('murfApiKey').value = '';
+        document.getElementById('assemblyaiApiKey').value = '';
+        document.getElementById('openweatherApiKey').value = '';
+        
+        localStorage.removeItem('geminiApiKey');
+        localStorage.removeItem('murfApiKey');
+        localStorage.removeItem('assemblyaiApiKey');
+        localStorage.removeItem('openweatherApiKey');
+        
+        document.getElementById('configStatus').textContent = 'Configuration cleared!';
+        setTimeout(() => {
+            document.getElementById('configStatus').textContent = '';
+        }, 3000);
+    });
+
+// Enhanced LLM Voice Agent with Web Search and Weather API
+window.sendToLLM = async function(audioBlob) {
+    const geminiApiKey = localStorage.getItem('geminiApiKey') || '';
+    const murfApiKey = localStorage.getItem('murfApiKey') || '';
+    const assemblyaiApiKey = localStorage.getItem('assemblyaiApiKey') || '';
+    const openWeatherApiKey = localStorage.getItem('openweatherApiKey') || '';
+    
+    if (!geminiApiKey || !murfApiKey || !assemblyaiApiKey) {
+        alert('Please configure your API keys in the settings first!');
+        document.getElementById('configModal').style.display = 'block';
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('audio', audioBlob);
+    formData.append('gemini_api_key', geminiApiKey);
+    formData.append('murf_api_key', murfApiKey);
+    formData.append('assemblyai_api_key', assemblyaiApiKey);
+    formData.append('openweather_api_key', openWeatherApiKey);
+    
+    try {
+        const response = await fetch(`/agent/chat/${currentSessionId}`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Display transcription
+            const llmTranscriptionResult = document.getElementById('llm-transcription-result');
+            if (llmTranscriptionResult) {
+                llmTranscriptionResult.textContent = result.transcription || '';
+            }
+            
+            // Display response
+            const llmResponseText = document.getElementById('llm-response-text');
+            if (llmResponseText) {
+                llmResponseText.textContent = result.response || '';
+            }
+            
+            // Play audio response
+            if (result.audio_url) {
+                const llmAudioPlayer = document.getElementById('llm-audio-player');
+                if (llmAudioPlayer) {
+                    llmAudioPlayer.src = result.audio_url;
+                    llmAudioPlayer.style.display = 'block';
+                    llmAudioPlayer.play();
+                }
+            }
+            
+            // Update chat history
+            if (window.updateChatHistory) {
+                window.updateChatHistory();
+            }
+            
+        } else {
+            alert('Error: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error communicating with server: ' + error.message);
+    }
+};

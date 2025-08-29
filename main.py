@@ -18,6 +18,9 @@ import uvicorn
 import shutil
 import os
 from dotenv import load_dotenv
+import json
+import urllib.parse
+import httpx
 
 load_dotenv()
 
@@ -43,9 +46,64 @@ chat_history_store = {}
 # it is saved if its is visible
 # for model in genai.list_models():
 #     print(f"Available model: {model.name}")
-#     print(model.name)
-
+# === FastAPI App Setup ===
 app = FastAPI()
+
+@app.post("/test-apis")
+async def test_apis(request: dict):
+    """Test API keys by making minimal API calls to verify they're valid."""
+    try:
+        # Test Gemini API
+        genai.configure(api_key=request.get("gemini", ""))
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        try:
+            model.generate_content("Test")
+        except Exception as e:
+            return {"success": False, "error": f"Gemini API key invalid: {str(e)}"}
+        
+        # Test AssemblyAI
+        aai.settings.api_key = request.get("assemblyai", "")
+        try:
+            transcriber = aai.Transcriber()
+            # Just test the config, don't actually transcribe
+        except Exception as e:
+            return {"success": False, "error": f"AssemblyAI API key invalid: {str(e)}"}
+        
+        # Test Murf API (basic auth check)
+        murf_key = request.get("murf", "")
+        try:
+            headers = {"Authorization": f"Bearer {murf_key}"}
+            # We'll just validate the key format for now
+            if not murf_key or len(murf_key) < 10:
+                return {"success": False, "error": "Murf API key appears invalid"}
+        except Exception as e:
+            return {"success": False, "error": f"Murf API key invalid: {str(e)}"}
+        
+        # Test OpenWeatherMap API
+        openweather_key = request.get("openweather", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                test_url = f"http://api.openweathermap.org/data/2.5/weather"
+                params = {
+                    "q": "London",
+                    "appid": openweather_key,
+                    "units": "metric"
+                }
+                response = await client.get(test_url, params=params, timeout=5.0)
+                
+                if response.status_code == 200:
+                    pass  # Valid
+                elif response.status_code == 401:
+                    return {"success": False, "error": "OpenWeatherMap API key invalid"}
+                else:
+                    return {"success": False, "error": f"OpenWeatherMap API error: {response.status_code}"}
+        except Exception as e:
+            return {"success": False, "error": f"OpenWeatherMap API key invalid: {str(e)}"}
+        
+        return {"success": True, "message": "All API keys are valid!"}
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # Mount static and template directories
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -67,15 +125,97 @@ async def transcribe_with_assemblyai(audio_path: str) -> str:
     
     return transcript.text
 
-async def call_gemini(messages: List[Dict[str, str]]) -> str:
-    """Helper function to call Gemini API with chat history"""
-    if not GEMINI_API_KEY:
+async def call_gemini(messages: List[Dict[str, str]], api_key: str = None) -> str:
+    """Helper function to call Gemini API with chat history and web search capability"""
+    # Use provided API key or fallback to environment
+    key_to_use = api_key or GEMINI_API_KEY
+    if not key_to_use:
         raise RuntimeError("Gemini API key not configured")
     
     try:
+        # Configure with provided key
+        genai.configure(api_key=key_to_use)
+        
         # Use the Python client
         model = genai.GenerativeModel('gemini-1.5-flash')
         chat = model.start_chat(history=[])
+        
+        last_message = messages[-1]["content"]
+        
+        # Check if the message contains search keywords or weather keywords
+        search_keywords = ['search', 'find', 'look up', 'what is', 'who is', 'latest', 'news', 'current']
+        weather_keywords = ['weather', 'temperature', 'forecast', 'climate', 'rain', 'snow', 'sunny', 'cloudy', 'wind']
+        
+        last_message_lower = last_message.lower()
+        should_search = any(keyword.lower() in last_message_lower for keyword in search_keywords)
+        should_get_weather = any(keyword.lower() in last_message_lower for keyword in weather_keywords)
+        
+        # Extract city name for weather queries
+        city_match = None
+        if should_get_weather:
+            import re
+            city_patterns = [
+                r'in\s+([A-Za-z\s]+?)(?:\?|$)',
+                r'at\s+([A-Za-z\s]+?)(?:\?|$)',
+                r'weather\s+in\s+([A-Za-z\s]+?)(?:\?|$)',
+                r'temperature\s+in\s+([A-Za-z\s]+?)(?:\?|$)'
+            ]
+            for pattern in city_patterns:
+                match = re.search(pattern, last_message, re.IGNORECASE)
+                if match:
+                    city_match = match.group(1).strip()
+                    break
+        
+        enhanced_message = last_message
+        
+        if should_get_weather and city_match:
+            # Try to get weather data
+            weather_api_key = os.getenv("OPENWEATHER_API_KEY")
+            if weather_api_key:
+                try:
+                    weather_data = await get_weather(city_match, weather_api_key)
+                    weather_context = f"""
+
+Current Weather Information for {weather_data['city']}, {weather_data['country']}:
+- Temperature: {weather_data['temperature']}°C (feels like {weather_data['feels_like']}°C)
+- Weather: {weather_data['weather'].title()}
+- Humidity: {weather_data['humidity']}%
+- Wind Speed: {weather_data['wind_speed']} m/s
+- Pressure: {weather_data['pressure']} hPa
+
+Please provide this weather information to the user in a natural, conversational way."""
+                    enhanced_message = last_message + weather_context
+                except Exception as e:
+                    # Fallback to web search if weather API fails
+                    search_query = f"current weather in {city_match}"
+                    search_results = await search_web(search_query, max_results=3)
+                    if search_results['success'] and search_results['results']:
+                        search_context = "\n\nHere are the latest weather search results:\n"
+                        for i, result in enumerate(search_results['results'], 1):
+                            search_context += f"{i}. **{result['title']}**: {result['snippet']}\n"
+                            if result['url']:
+                                search_context += f"   Source: {result['url']}\n"
+                        enhanced_message = f"{last_message}{search_context}\n\nBased on this weather information, please provide a comprehensive response."
+        elif should_search:
+            # Extract search query from the message
+            search_query = last_message
+            for prefix in ['search for', 'find', 'look up', 'what is', 'who is']:
+                if search_query.lower().startswith(prefix.lower()):
+                    search_query = search_query[len(prefix):].strip()
+                    break
+            
+            # Perform web search
+            search_results = await search_web(search_query, max_results=3)
+            
+            if search_results['success'] and search_results['results']:
+                # Add search results to the message context
+                search_context = "\n\nHere are the latest search results for your query:\n"
+                for i, result in enumerate(search_results['results'], 1):
+                    search_context += f"{i}. **{result['title']}**: {result['snippet']}\n"
+                    if result['url']:
+                        search_context += f"   Source: {result['url']}\n"
+                
+                enhanced_message = f"{last_message}{search_context}\n\nBased on this information, please provide a comprehensive response."
         
         # Convert messages to Gemini format
         for msg in messages[:-1]:  # Exclude the last message
@@ -85,8 +225,8 @@ async def call_gemini(messages: List[Dict[str, str]]) -> str:
                 # Gemini handles history internally
                 pass
         
-        # Send the last message
-        response = chat.send_message(messages[-1]["content"])
+        # Send the enhanced message
+        response = chat.send_message(enhanced_message)
         return response.text
         
     except Exception as e:
@@ -124,6 +264,64 @@ async def generate_murf_tts_and_save(text: str) -> str:
         raise RuntimeError("No audio URL in TTS response")
     
     return audio_url
+
+async def search_web(query: str, max_results: int = 5) -> Dict[str, any]:
+    """Helper function to search the web using DuckDuckGo Instant Answer API"""
+    try:
+        # DuckDuckGo Instant Answer API (free, no key required)
+        search_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_html=1&skip_disambig=1"
+        
+        response = requests.get(search_url, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Extract relevant search results
+        results = []
+        
+        # Add abstract/answer if available
+        if data.get('Abstract'):
+            results.append({
+                'title': 'Direct Answer',
+                'snippet': data['Abstract'],
+                'url': data.get('AbstractURL', ''),
+                'source': 'DuckDuckGo'
+            })
+        
+        # Add related topics
+        if data.get('RelatedTopics'):
+            for topic in data['RelatedTopics'][:max_results-1]:
+                if isinstance(topic, dict) and topic.get('Text'):
+                    results.append({
+                        'title': topic.get('FirstURL', '').split('/')[-1].replace('_', ' ') or 'Related Topic',
+                        'snippet': topic['Text'][:200] + '...' if len(topic['Text']) > 200 else topic['Text'],
+                        'url': topic.get('FirstURL', ''),
+                        'source': 'DuckDuckGo'
+                    })
+        
+        # Add web results if available
+        if data.get('Results'):
+            for result in data['Results'][:max_results]:
+                results.append({
+                    'title': result.get('Text', '').split(' - ')[0] if result.get('Text') else 'Web Result',
+                    'snippet': result.get('Text', '')[200:] if result.get('Text') else '',
+                    'url': result.get('FirstURL', ''),
+                    'source': 'Web'
+                })
+        
+        return {
+            'success': True,
+            'query': query,
+            'results': results,
+            'total_results': len(results)
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'results': []
+        }
 
 
 
@@ -229,6 +427,11 @@ async def transcribe_audio(file: UploadFile = File(...)):
             status_code=500, 
             content={"error": f"Transcription failed: {str(e)}"}
         )
+
+@app.post("/search")
+async def search_endpoint(query: str = Form(...), max_results: int = Form(5)):
+    """Endpoint to perform web search using DuckDuckGo"""
+    return await search_web(query, max_results)
 
 @app.get("/")
 async def home(request: Request):
@@ -434,7 +637,14 @@ async def tts_echo(file: UploadFile = File(...), voiceId: str = Form("en-US-nata
         )
 
 @app.post("/agent/chat/{session_id}")
-async def agent_chat(session_id: str, file: UploadFile = File(...), voice_id: str = Form("en-US-natalie")):
+async def agent_chat(session_id: str,
+    file: UploadFile = File(...),
+    voice_id: str = Form("en-US-natalie"),
+    gemini_api_key: str = Form(None),
+    murf_api_key: str = Form(None),
+    assemblyai_api_key: str = Form(None),
+    openweather_api_key: str = Form(None)
+):
     """
     Chat endpoint with history for LLM voice agent
     
@@ -447,17 +657,22 @@ async def agent_chat(session_id: str, file: UploadFile = File(...), voice_id: st
     6. Return audio URL and response text
     """
     try:
+        # Use provided API keys or fall back to environment
+        current_gemini_key = gemini_api_key or GEMINI_API_KEY
+        current_murf_key = murf_api_key or MURF_API_KEY
+        current_assemblyai_key = assemblyai_api_key or ASSEMBLYAI_API_KEY
+
         # Check API keys
-        if not ASSEMBLYAI_API_KEY:
+        if not current_assemblyai_key:
             return JSONResponse(
                 status_code=500, 
-                content={"error": "AssemblyAI API key not configured. Please set ASSEMBLYAI_API_KEY in .env file."}
+                content={"error": "AssemblyAI API key not configured. Please set ASSEMBLYAI_API_KEY in .env file or provide via form."}
             )
         
-        if not GEMINI_API_KEY:
+        if not current_gemini_key:
             return JSONResponse(
                 status_code=500, 
-                content={"error": "Gemini API key not configured. Please set GEMINI_API_KEY in .env file."}
+                content={"error": "Gemini API key not configured. Please set GEMINI_API_KEY in .env file or provide via form."}
             )
             
         # Murf API key is optional for chat; if missing we'll skip TTS and return text-only
@@ -488,6 +703,8 @@ async def agent_chat(session_id: str, file: UploadFile = File(...), voice_id: st
         try:
             # Step 1: Transcribe audio (STT)
             try:
+                # Configure AssemblyAI with provided key
+                aai.settings.api_key = current_assemblyai_key
                 transcriber = aai.Transcriber()
                 transcript = transcriber.transcribe(temp_audio_path)
                 if transcript.status != 'completed' or not transcript.text:
@@ -523,8 +740,12 @@ async def agent_chat(session_id: str, file: UploadFile = File(...), voice_id: st
             # Step 4: Prepare messages for Gemini
             messages = chat_history_store[session_id]
             
-            # Step 5: Call Gemini API
+            # Step 5: Call Gemini API with dynamic key
             try:
+                # Configure Gemini with provided key
+                if gemini_api_key:
+                    genai.configure(api_key=current_gemini_key)
+                
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 chat = model.start_chat(history=[])
                 # Send context and current message
@@ -556,13 +777,13 @@ async def agent_chat(session_id: str, file: UploadFile = File(...), voice_id: st
             # Step 7: Generate TTS for response (best-effort)
             audio_url = None
             tts_warning = None
-            if MURF_API_KEY:
+            if current_murf_key:
                 try:
                     url = "https://api.murf.ai/v1/speech/generate"
                     headers = {
                         "Accept": "application/json",
                         "Content-Type": "application/json",
-                        "api-key": MURF_API_KEY
+                        "api-key": current_murf_key
                     }
                     payload = {
                         "text": assistant_response,
@@ -634,12 +855,52 @@ async def clear_chat_history(session_id: str):
 
 # (Removed duplicate /agent/chat/{session_id} endpoint with conflicting signature)
 
+async def get_weather(city: str, api_key: str):
+    """Fetch weather data from OpenWeatherMap API"""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"http://api.openweathermap.org/data/2.5/weather"
+            params = {
+                "q": city,
+                "appid": api_key,
+                "units": "metric"
+            }
+            response = await client.get(url, params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
+                weather_info = {
+                    "city": data["name"],
+                    "country": data["sys"]["country"],
+                    "temperature": data["main"]["temp"],
+                    "feels_like": data["main"]["feels_like"],
+                    "humidity": data["main"]["humidity"],
+                    "pressure": data["main"]["pressure"],
+                    "weather": data["weather"][0]["description"],
+                    "wind_speed": data["wind"]["speed"],
+                    "visibility": data.get("visibility", "N/A"),
+                    "timestamp": data["dt"]
+                }
+                return weather_info
+            else:
+                error_data = response.json()
+                raise HTTPException(status_code=response.status_code, detail=error_data.get("message", "Failed to fetch weather data"))
+                
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Weather service unavailable: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-
-
-
-
+@app.post("/weather")
+async def get_weather_data(city: str = Form(...), api_key: str = Form(...)):
+    """Get weather information for a specific city"""
+    try:
+        weather_data = await get_weather(city, api_key)
+        return {"success": True, "weather": weather_data}
+    except HTTPException as e:
+        return {"success": False, "error": e.detail}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/llm/query")
 async def llm_query(request: Request, text: str = Form(None), audio: UploadFile = File(None), voice_id: str = Form("en-US-katie")):

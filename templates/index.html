@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AuraVox Echo Bot</title>
   <link rel="stylesheet" href="/static/style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;400&display=swap" rel="stylesheet">
   <link rel="icon" href="/static/favicon.ico" />
 </head>
 <body>
@@ -170,12 +169,18 @@
         <canvas id="llm-audio-visualizer" width="800" height="60" style="width: 100%; height: 100%;"></canvas>
       </div>
       
-      <button id="llm-start-recording-btn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">
-        <span class="btn-icon">🎙️</span> Ask Question
-      </button>
-      <button id="llm-stop-recording-btn" style="padding: 10px 20px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>
-        <span class="btn-icon">⏹️</span> Stop Recording
-      </button>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+        <button id="llm-start-recording-btn" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 25px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.3s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+          <span class="btn-icon">🎙️</span> <span id="llm-start-btn-text">Ask Question</span>
+        </button>
+        <button id="llm-stop-recording-btn" style="padding: 12px 24px; background: #f44336; color: white; border: none; border-radius: 25px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.3s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.2);" disabled>
+          <span class="btn-icon">⏹️</span> Stop Recording
+        </button>
+        <div id="llm-recording-indicator" style="display: none; align-items: center; gap: 5px; padding: 8px 15px; background: #ff4444; color: white; border-radius: 20px; font-weight: bold; animation: pulse 1.5s infinite;">
+          <span>🔴</span>
+          <span>RECORDING...</span>
+        </div>
+      </div>
       
       <div id="llm-loading-indicator" style="margin-top: 15px; display: none;">
         <div class="spinner" style="display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(0,0,0,.1); border-radius: 50%; border-top-color: #007bff; animation: spin 1s ease-in-out infinite;"></div>
@@ -203,9 +208,69 @@
     </section>
   </div>
 
+  <!-- API Configuration Modal -->
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>🔧 API Configuration</h2>
+      <p>Enter your API keys to use the services. Keys are stored locally in your browser.</p>
+      
+      <div class="config-section">
+        <label for="geminiApiKey">🤖 Google Gemini API Key:</label>
+        <input type="password" id="geminiApiKey" placeholder="Enter Gemini API key..." />
+        <small>Get key from: <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+      </div>
+      
+      <div class="config-section">
+        <label for="murfApiKey">🔊 Murf AI API Key:</label>
+        <input type="password" id="murfApiKey" placeholder="Enter Murf API key..." />
+        <small>Get key from: <a href="https://murf.ai/account/api" target="_blank">Murf AI Dashboard</a></small>
+      </div>
+      
+      <div class="config-section">
+        <label for="assemblyaiApiKey">🎤 AssemblyAI API Key:</label>
+        <input type="password" id="assemblyaiApiKey" placeholder="Enter AssemblyAI API key..." />
+        <small>Get key from: <a href="https://www.assemblyai.com/app/account" target="_blank">AssemblyAI Dashboard</a></small>
+      </div>
+      
+      <div class="config-section">
+        <label for="openweatherApiKey">🌤️ OpenWeatherMap API Key:</label>
+        <input type="password" id="openweatherApiKey" placeholder="Enter OpenWeatherMap API key..." />
+        <small>Get key from: <a href="https://openweathermap.org/api" target="_blank">OpenWeatherMap</a></small>
+      </div>
+      
+      <div class="config-actions">
+        <button id="saveConfigBtn" class="btn-primary">💾 Save Configuration</button>
+        <button id="clearConfigBtn" class="btn-secondary">🗑️ Clear All</button>
+        <button id="testConfigBtn" class="btn-test">✅ Test Keys</button>
+      </div>
+      
+      <div id="configStatus" style="margin-top: 15px; padding: 10px; border-radius: 4px; display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Configuration Button -->
+  <button id="configBtn" class="config-button" title="API Configuration">⚙️</button>
+
   <style>
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    
+    .recording-active #llm-start-recording-btn {
+      background: #ff9800 !important;
+      transform: scale(1.05);
+    }
+    
+    .recording-active #llm-start-btn-text::after {
+      content: " (Recording...)";
+      font-size: 0.8em;
     }
   </style>
   <script src="/static/script.js" defer></script>
