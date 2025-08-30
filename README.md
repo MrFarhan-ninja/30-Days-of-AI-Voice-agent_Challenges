@@ -1,6 +1,6 @@
 
 
------------------  ************  AURAVOX Voice Agent   **************----------------------------- -----------------------------------------------------------------------------------------------------            -
+                                        ************                                      ✨       AURAVOX Voice Agent  ✨                          **************         -
 
 
 
@@ -62,6 +62,73 @@ voice-agent-bootcamp/
 
 ```
 
+
+#   Auravox Voice Agent Project
+
+## Project Overview
+This is a voice-enabled conversational agent built with:
+- FastAPI backend
+- AssemblyAI for speech-to-text
+- Google Gemini for AI conversations
+- Murf AI for text-to-speech
+
+## Key Features
+
+### Audio Transcription
+- **Endpoint**: `/transcribe/file` (POST)
+- **Input**: Audio file upload
+- **Output**: Text transcript
+- **Service**: AssemblyAI speech-to-text
+- **Features**:
+  - Supports various audio formats
+  - Handles large files efficiently
+  - Includes error handling for invalid inputs
+
+### Text-to-Speech
+- **Endpoint**: `/tts` (POST)
+- **Input**: Text and voice selection
+- **Output**: Audio URL
+- **Service**: Murf AI
+- **Features**:
+  - Multiple voice options
+  - Natural sounding speech
+  - Input validation for empty text
+
+### Chat Conversations
+- **Endpoint**: `/chat` (POST)
+- **Input**: Messages and optional session ID
+- **Output**: AI response and session ID
+- **Service**: Google Gemini
+- **Features**:
+  - Session-based conversation history
+  - Context-aware responses
+  - Fallback message when services are unavailable
+
+### Session Management
+- Automatic session creation
+- Persistent conversation history
+- Session ID generation and tracking
+
+
+```
+
+## Setup Instructions
+1. Install dependencies: `pip install -r requirements.txt`
+2. Create `.env` file with your API keys
+3. Run server: `uvicorn main:app --reload`
+
+## API Endpoints
+- `GET /` - Homepage
+- `POST /transcribe/file` - Upload audio for transcription
+- `POST /tts` - Convert text to speech
+- `POST /chat` - Chat with Gemini AI
+
+## Environment Variables
+- `MURF_API_KEY` - Murf AI API key
+- `ASSEMBLYAI_API_KEY` - AssemblyAI API key
+- `GEMINI_API_KEY` - Google Gemini API key
+
+
 ### `templates/index.html` (UI highlights)
 
 * **Single toggle record button** (Start/Stop) with pulsing & ripple animations
@@ -114,7 +181,7 @@ voice-agent-bootcamp/
 
 ---
 
-## 🧪 Error Handling (Day 11)
+## 🧪 Error Handling 
 
 * Backend: `try/except` around STT/LLM/TTS; logs + safe JSON error
 * Frontend: `fetch` error → show friendly text + play `/static/fallback.mp3`
@@ -185,25 +252,84 @@ uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-## 🌟 Feature Set
+🌈 Features You'll Love :
 
-* 🎙 One-click record (toggle)
-* 💬 Chat history per session (URL param)
-* 🔊 Auto-play responses (clean UI, hidden player)
-* ✨ Glassmorphism + gradients + subtle shadows
-* 🛡️ Resilient error handling + voice fallback
-* ⌨️ Spacebar shortcut (optional)
-* 📱 Responsive layout
+🎙️ Live Voice-to-Text: Real-time streaming transcription powered by AssemblyAI, with 🚦 smart turn detection!
+
+🤖 Conversational AI: Ask about weather, current affairs, or anything—get instant, insightful answers.
+
+🔊 Human-like Voice Responses: Choose Murf voices & hear answers!
+
+📝 Transcript History: Track and download every conversation turn.
+
+🎨 Modern UI: Vibrant gradients, easy controls, and responsive design.
+
+🌍 Global Access: Cloud deployed (Render.com), accessible via secure HTTPS.
+
+🔑 Private API Key Entry: Secure, session-only key management
 
 ---
 
+
+🌟 What's New?
+🚦 AssemblyAI Turn Detection for natural, chunked transcripts
+
+🤩 Choose from multiple Murf TTS voices
+
+📜 Transcript download & session history container
+
+🌍 Secure cloud deployment—your friends can use it instantly!
+
+
+
+
+⚙️ Tech Stack & Architecture
+
+       Layer	                                             Details
+
+1 . Frontend	                             HTML, CSS, JavaScript (index.html, streaming-raw.js)
+
+2.  Backend	                               FastAPI (Python), AssemblyAI Streaming, Gemini LLM, Murf TTS
+  
+3.  Hosting	                               🌐 Render.com
+  
+4.  Features	                              WebSockets, REST endpoints, secure API key modal
+
+
+💻 Run AuraVox Locally
+
+BASH :
+
+git clone https://github.com/MrFarhan-ninja/AuraVox.git
+cd AuraVox
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+
+🚀 Try AuraVox Instantly
+🌐 Demo: three0-days-of-ai-voice-agent-challenges.onrender.com
+
+Visit the live link
+
+Add your API keys (AssemblyAI, Gemini, Murf TTS)
+
+Press the mic and start chatting!
+
+
+🔑 API Keys You Need
+
+AssemblyAI (Speech-To-Text)
+
+Gemini LLM (Conversational AI)
+
+Murf TTS (Voice synthesis)
+
+Your keys are never stored—used securely during your session.
+
+
 ## 📸 Screenshots
 
-* **Before → After** (Day 12 glow-up)
-* Chat history view
-* Single mic button with recording animation
-
-> Paste your screenshots here (PNG/JPG). For LinkedIn, make a split image.
+<img width="1175" height="891" alt="AuraVox_Final" src="https://github.com/user-attachments/assets/6ce1fff0-3bc0-45b2-acb5-5a4182078991" />
 
 ---
 
@@ -225,9 +351,9 @@ uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-## 🧾 License
-
-MIT — use, remix, ship.
+🪧 License
+MIT – Fork, remix, collab, and launch your own!
+Created for #30DaysOfAIVoiceAgents by Farhan.
 
 ---
 
@@ -243,78 +369,6 @@ AURAVOX_PORT=8000
 AURAVOX_BASE_URL=http://localhost:8000
 ```
 
-# Voice Agent Project
-
-## Project Overview
-This is a voice-enabled conversational agent built with:
-- FastAPI backend
-- AssemblyAI for speech-to-text
-- Google Gemini for AI conversations
-- Murf AI for text-to-speech
-
-## Key Features
-
-### Audio Transcription
-- **Endpoint**: `/transcribe/file` (POST)
-- **Input**: Audio file upload
-- **Output**: Text transcript
-- **Service**: AssemblyAI speech-to-text
-- **Features**:
-  - Supports various audio formats
-  - Handles large files efficiently
-  - Includes error handling for invalid inputs
-
-### Text-to-Speech
-- **Endpoint**: `/tts` (POST)
-- **Input**: Text and voice selection
-- **Output**: Audio URL
-- **Service**: Murf AI
-- **Features**:
-  - Multiple voice options
-  - Natural sounding speech
-  - Input validation for empty text
-
-### Chat Conversations
-- **Endpoint**: `/chat` (POST)
-- **Input**: Messages and optional session ID
-- **Output**: AI response and session ID
-- **Service**: Google Gemini
-- **Features**:
-  - Session-based conversation history
-  - Context-aware responses
-  - Fallback message when services are unavailable
-
-### Session Management
-- Automatic session creation
-- Persistent conversation history
-- Session ID generation and tracking
-
-## Project Structure
-```
-├── .env - API keys configuration
-├── main.py - FastAPI application
-├── requirements.txt - Python dependencies
-├── schemas.py - Pydantic models
-├── services/
-│   ├── assemblyai_service.py - AssemblyAI integration
-│   ├── gemini_service.py - Gemini AI integration
-│   └── murf_service.py - Murf TTS integration
-├── static/ - Frontend assets
-└── templates/ - HTML templates
-```
-
-## Setup Instructions
-1. Install dependencies: `pip install -r requirements.txt`
-2. Create `.env` file with your API keys
-3. Run server: `uvicorn main:app --reload`
-
-## API Endpoints
-- `GET /` - Homepage
-- `POST /transcribe/file` - Upload audio for transcription
-- `POST /tts` - Convert text to speech
-- `POST /chat` - Chat with Gemini AI
-
-## Environment Variables
-- `MURF_API_KEY` - Murf AI API key
-- `ASSEMBLYAI_API_KEY` - AssemblyAI API key
-- `GEMINI_API_KEY` - Google Gemini API key
+🤝 Connect & Collab
+Feel free to connect on " Farhan Ali Khan "
+Love AI voice projects? Drop a ⭐ or DM for tips/code!
